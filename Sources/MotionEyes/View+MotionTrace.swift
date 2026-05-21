@@ -2,13 +2,13 @@ import OSLog
 @preconcurrency import SwiftUI
 
 #if canImport(AppKit)
-import AppKit
+    import AppKit
 #endif
 #if canImport(QuartzCore)
-import QuartzCore
+    import QuartzCore
 #endif
 #if canImport(UIKit)
-import UIKit
+    import UIKit
 #endif
 
 private struct UncheckedGeometrySpace: @unchecked Sendable {
@@ -284,7 +284,7 @@ private struct MotionTraceSampleEffect: GeometryEffect {
         }
     }
 
-    func effectValue(size: CGSize) -> ProjectionTransform {
+    func effectValue(size _: CGSize) -> ProjectionTransform {
         ProjectionTransform(CGAffineTransform.identity)
     }
 }
@@ -305,21 +305,21 @@ private struct MotionGeometryProbeView: View {
                     onFrameChange: onFrameChange
                 )
             #if !os(watchOS)
-            case .window, .screen:
+                case .window, .screen:
+                    MotionPlatformGeometryProbeView(
+                        space: space.value,
+                        source: source,
+                        onFrameChange: onFrameChange
+                    )
+            #endif
+            }
+        #if !os(watchOS)
+            case .presentation:
                 MotionPlatformGeometryProbeView(
                     space: space.value,
                     source: source,
                     onFrameChange: onFrameChange
                 )
-            #endif
-            }
-        #if !os(watchOS)
-        case .presentation:
-            MotionPlatformGeometryProbeView(
-                space: space.value,
-                source: source,
-                onFrameChange: onFrameChange
-            )
         #endif
         }
     }
@@ -340,306 +340,306 @@ private struct MotionSwiftUILayoutGeometryProbeView: View {
 }
 
 #if !os(watchOS)
-private struct MotionPlatformGeometryProbeView: View {
-    let space: MotionGeometrySpace
-    let source: MotionGeometrySource
-    let onFrameChange: (CGRect) -> Void
+    private struct MotionPlatformGeometryProbeView: View {
+        let space: MotionGeometrySpace
+        let source: MotionGeometrySource
+        let onFrameChange: (CGRect) -> Void
 
-    @ViewBuilder
-    var body: some View {
-        #if canImport(UIKit) && (os(iOS) || os(tvOS) || os(visionOS))
-        MotionUIKitGeometryProbeRepresentable(
-            space: space,
-            source: source,
-            onFrameChange: onFrameChange
-        )
-        #elseif canImport(AppKit) && os(macOS)
-        MotionAppKitGeometryProbeRepresentable(
-            space: space,
-            source: source,
-            onFrameChange: onFrameChange
-        )
-        #else
-        Color.clear
-        #endif
+        @ViewBuilder
+        var body: some View {
+            #if canImport(UIKit) && (os(iOS) || os(tvOS) || os(visionOS))
+                MotionUIKitGeometryProbeRepresentable(
+                    space: space,
+                    source: source,
+                    onFrameChange: onFrameChange
+                )
+            #elseif canImport(AppKit) && os(macOS)
+                MotionAppKitGeometryProbeRepresentable(
+                    space: space,
+                    source: source,
+                    onFrameChange: onFrameChange
+                )
+            #else
+                Color.clear
+            #endif
+        }
     }
-}
 #endif
 
 #if canImport(UIKit) && (os(iOS) || os(tvOS) || os(visionOS))
-private struct MotionUIKitGeometryProbeRepresentable: UIViewRepresentable {
-    let space: MotionGeometrySpace
-    let source: MotionGeometrySource
-    let onFrameChange: (CGRect) -> Void
+    private struct MotionUIKitGeometryProbeRepresentable: UIViewRepresentable {
+        let space: MotionGeometrySpace
+        let source: MotionGeometrySource
+        let onFrameChange: (CGRect) -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(
-            space: space,
-            source: source,
-            onFrameChange: onFrameChange
-        )
-    }
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
-        view.backgroundColor = .clear
-        view.isUserInteractionEnabled = false
-        context.coordinator.attach(to: view)
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.update(
-            space: space,
-            source: source,
-            onFrameChange: onFrameChange
-        )
-        context.coordinator.attach(to: uiView)
-    }
-
-    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
-        coordinator.detach()
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        private var space: MotionGeometrySpace
-        private var source: MotionGeometrySource
-        private var onFrameChange: (CGRect) -> Void
-
-        private weak var view: UIView?
-        private var displayLink: CADisplayLink?
-
-        init(
-            space: MotionGeometrySpace,
-            source: MotionGeometrySource,
-            onFrameChange: @escaping (CGRect) -> Void
-        ) {
-            self.space = space
-            self.source = source
-            self.onFrameChange = onFrameChange
-            super.init()
-        }
-
-        func attach(to view: UIView) {
-            self.view = view
-            startSamplingIfNeeded()
-            sampleFrame()
-        }
-
-        func update(
-            space: MotionGeometrySpace,
-            source: MotionGeometrySource,
-            onFrameChange: @escaping (CGRect) -> Void
-        ) {
-            self.space = space
-            self.source = source
-            self.onFrameChange = onFrameChange
-            sampleFrame()
-        }
-
-        func detach() {
-            displayLink?.invalidate()
-            displayLink = nil
-            view = nil
-        }
-
-        private func startSamplingIfNeeded() {
-            guard displayLink == nil else { return }
-            let displayLink = CADisplayLink(target: self, selector: #selector(step))
-            self.displayLink = displayLink
-            displayLink.add(to: .main, forMode: .common)
-        }
-
-        @objc
-        private func step() {
-            sampleFrame()
-        }
-
-        private func sampleFrame() {
-            guard let view, let window = view.window else {
-                return
-            }
-
-            let layoutInWindow = view.convert(view.bounds, to: window)
-            let presentationInWindow = Self.presentationFrameInWindow(for: view, window: window)
-            let selectedInWindow = MotionGeometryFrameSelector.selectInWindow(
+        func makeCoordinator() -> Coordinator {
+            Coordinator(
+                space: space,
                 source: source,
-                candidates: MotionGeometryFrameCandidates(
-                    layoutInWindow: layoutInWindow,
-                    presentationInWindow: presentationInWindow
-                )
+                onFrameChange: onFrameChange
             )
-
-            let resolvedFrame: CGRect
-            switch space {
-            case .swiftUI:
-                resolvedFrame = selectedInWindow
-            case .window:
-                resolvedFrame = selectedInWindow
-            case .screen:
-                resolvedFrame = window.convert(selectedInWindow, to: window.screen.coordinateSpace)
-            }
-
-            onFrameChange(resolvedFrame)
         }
 
-        private static func presentationFrameInWindow(
-            for view: UIView,
-            window: UIWindow
-        ) -> CGRect? {
-            guard let presentationLayer = view.layer.presentation() else {
-                return nil
+        func makeUIView(context: Context) -> UIView {
+            let view = UIView(frame: .zero)
+            view.backgroundColor = .clear
+            view.isUserInteractionEnabled = false
+            context.coordinator.attach(to: view)
+            return view
+        }
+
+        func updateUIView(_ uiView: UIView, context: Context) {
+            context.coordinator.update(
+                space: space,
+                source: source,
+                onFrameChange: onFrameChange
+            )
+            context.coordinator.attach(to: uiView)
+        }
+
+        static func dismantleUIView(_: UIView, coordinator: Coordinator) {
+            coordinator.detach()
+        }
+
+        @MainActor
+        final class Coordinator: NSObject {
+            private var space: MotionGeometrySpace
+            private var source: MotionGeometrySource
+            private var onFrameChange: (CGRect) -> Void
+
+            private weak var view: UIView?
+            private var displayLink: CADisplayLink?
+
+            init(
+                space: MotionGeometrySpace,
+                source: MotionGeometrySource,
+                onFrameChange: @escaping (CGRect) -> Void
+            ) {
+                self.space = space
+                self.source = source
+                self.onFrameChange = onFrameChange
+                super.init()
             }
 
-            let targetLayer = window.layer.presentation() ?? window.layer
-            return presentationLayer.convert(presentationLayer.bounds, to: targetLayer)
+            func attach(to view: UIView) {
+                self.view = view
+                startSamplingIfNeeded()
+                sampleFrame()
+            }
+
+            func update(
+                space: MotionGeometrySpace,
+                source: MotionGeometrySource,
+                onFrameChange: @escaping (CGRect) -> Void
+            ) {
+                self.space = space
+                self.source = source
+                self.onFrameChange = onFrameChange
+                sampleFrame()
+            }
+
+            func detach() {
+                displayLink?.invalidate()
+                displayLink = nil
+                view = nil
+            }
+
+            private func startSamplingIfNeeded() {
+                guard displayLink == nil else { return }
+                let displayLink = CADisplayLink(target: self, selector: #selector(step))
+                self.displayLink = displayLink
+                displayLink.add(to: .main, forMode: .common)
+            }
+
+            @objc
+            private func step() {
+                sampleFrame()
+            }
+
+            private func sampleFrame() {
+                guard let view, let window = view.window else {
+                    return
+                }
+
+                let layoutInWindow = view.convert(view.bounds, to: window)
+                let presentationInWindow = Self.presentationFrameInWindow(for: view, window: window)
+                let selectedInWindow = MotionGeometryFrameSelector.selectInWindow(
+                    source: source,
+                    candidates: MotionGeometryFrameCandidates(
+                        layoutInWindow: layoutInWindow,
+                        presentationInWindow: presentationInWindow
+                    )
+                )
+
+                let resolvedFrame: CGRect
+                switch space {
+                case .swiftUI:
+                    resolvedFrame = selectedInWindow
+                case .window:
+                    resolvedFrame = selectedInWindow
+                case .screen:
+                    resolvedFrame = window.convert(selectedInWindow, to: window.screen.coordinateSpace)
+                }
+
+                onFrameChange(resolvedFrame)
+            }
+
+            private static func presentationFrameInWindow(
+                for view: UIView,
+                window: UIWindow
+            ) -> CGRect? {
+                guard let presentationLayer = view.layer.presentation() else {
+                    return nil
+                }
+
+                let targetLayer = window.layer.presentation() ?? window.layer
+                return presentationLayer.convert(presentationLayer.bounds, to: targetLayer)
+            }
         }
     }
-}
 #endif
 
 #if canImport(AppKit) && os(macOS)
-private struct MotionAppKitGeometryProbeRepresentable: NSViewRepresentable {
-    let space: MotionGeometrySpace
-    let source: MotionGeometrySource
-    let onFrameChange: (CGRect) -> Void
+    private struct MotionAppKitGeometryProbeRepresentable: NSViewRepresentable {
+        let space: MotionGeometrySpace
+        let source: MotionGeometrySource
+        let onFrameChange: (CGRect) -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(
-            space: space,
-            source: source,
-            onFrameChange: onFrameChange
-        )
-    }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        view.wantsLayer = true
-        context.coordinator.attach(to: view)
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.update(
-            space: space,
-            source: source,
-            onFrameChange: onFrameChange
-        )
-        context.coordinator.attach(to: nsView)
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.detach()
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        private var space: MotionGeometrySpace
-        private var source: MotionGeometrySource
-        private var onFrameChange: (CGRect) -> Void
-
-        private weak var view: NSView?
-        private var timer: Timer?
-
-        init(
-            space: MotionGeometrySpace,
-            source: MotionGeometrySource,
-            onFrameChange: @escaping (CGRect) -> Void
-        ) {
-            self.space = space
-            self.source = source
-            self.onFrameChange = onFrameChange
-            super.init()
-        }
-
-        func attach(to view: NSView) {
-            self.view = view
-            startSamplingIfNeeded()
-            sampleFrame()
-        }
-
-        func update(
-            space: MotionGeometrySpace,
-            source: MotionGeometrySource,
-            onFrameChange: @escaping (CGRect) -> Void
-        ) {
-            self.space = space
-            self.source = source
-            self.onFrameChange = onFrameChange
-            sampleFrame()
-        }
-
-        func detach() {
-            timer?.invalidate()
-            timer = nil
-            view = nil
-        }
-
-        private func startSamplingIfNeeded() {
-            guard timer == nil else { return }
-
-            let timer = Timer(
-                timeInterval: 1.0 / 60.0,
-                target: self,
-                selector: #selector(step),
-                userInfo: nil,
-                repeats: true
-            )
-            self.timer = timer
-            RunLoop.main.add(timer, forMode: .common)
-        }
-
-        @objc
-        private func step() {
-            sampleFrame()
-        }
-
-        private func sampleFrame() {
-            guard let view, let window = view.window else {
-                return
-            }
-
-            let layoutInWindow = view.convert(view.bounds, to: nil)
-            let presentationInWindow = Self.presentationFrameInWindow(for: view)
-            let selectedInWindow = MotionGeometryFrameSelector.selectInWindow(
+        func makeCoordinator() -> Coordinator {
+            Coordinator(
+                space: space,
                 source: source,
-                candidates: MotionGeometryFrameCandidates(
-                    layoutInWindow: layoutInWindow,
-                    presentationInWindow: presentationInWindow
-                )
+                onFrameChange: onFrameChange
             )
-
-            let resolvedFrame: CGRect
-            switch space {
-            case .swiftUI:
-                resolvedFrame = selectedInWindow
-            case .window:
-                resolvedFrame = selectedInWindow
-            case .screen:
-                resolvedFrame = window.convertToScreen(selectedInWindow)
-            }
-
-            onFrameChange(resolvedFrame)
         }
 
-        private static func presentationFrameInWindow(for view: NSView) -> CGRect? {
-            guard
-                let presentationLayer = view.layer?.presentation(),
-                let superview = view.superview
-            else {
-                return nil
+        func makeNSView(context: Context) -> NSView {
+            let view = NSView(frame: .zero)
+            view.wantsLayer = true
+            context.coordinator.attach(to: view)
+            return view
+        }
+
+        func updateNSView(_ nsView: NSView, context: Context) {
+            context.coordinator.update(
+                space: space,
+                source: source,
+                onFrameChange: onFrameChange
+            )
+            context.coordinator.attach(to: nsView)
+        }
+
+        static func dismantleNSView(_: NSView, coordinator: Coordinator) {
+            coordinator.detach()
+        }
+
+        @MainActor
+        final class Coordinator: NSObject {
+            private var space: MotionGeometrySpace
+            private var source: MotionGeometrySource
+            private var onFrameChange: (CGRect) -> Void
+
+            private weak var view: NSView?
+            private var timer: Timer?
+
+            init(
+                space: MotionGeometrySpace,
+                source: MotionGeometrySource,
+                onFrameChange: @escaping (CGRect) -> Void
+            ) {
+                self.space = space
+                self.source = source
+                self.onFrameChange = onFrameChange
+                super.init()
             }
 
-            let originInSuperview = CGPoint(
-                x: presentationLayer.frame.minX,
-                y: presentationLayer.frame.minY
-            )
-            let originInWindow = superview.convert(originInSuperview, to: nil)
-            return CGRect(origin: originInWindow, size: presentationLayer.frame.size)
+            func attach(to view: NSView) {
+                self.view = view
+                startSamplingIfNeeded()
+                sampleFrame()
+            }
+
+            func update(
+                space: MotionGeometrySpace,
+                source: MotionGeometrySource,
+                onFrameChange: @escaping (CGRect) -> Void
+            ) {
+                self.space = space
+                self.source = source
+                self.onFrameChange = onFrameChange
+                sampleFrame()
+            }
+
+            func detach() {
+                timer?.invalidate()
+                timer = nil
+                view = nil
+            }
+
+            private func startSamplingIfNeeded() {
+                guard timer == nil else { return }
+
+                let timer = Timer(
+                    timeInterval: 1.0 / 60.0,
+                    target: self,
+                    selector: #selector(step),
+                    userInfo: nil,
+                    repeats: true
+                )
+                self.timer = timer
+                RunLoop.main.add(timer, forMode: .common)
+            }
+
+            @objc
+            private func step() {
+                sampleFrame()
+            }
+
+            private func sampleFrame() {
+                guard let view, let window = view.window else {
+                    return
+                }
+
+                let layoutInWindow = view.convert(view.bounds, to: nil)
+                let presentationInWindow = Self.presentationFrameInWindow(for: view)
+                let selectedInWindow = MotionGeometryFrameSelector.selectInWindow(
+                    source: source,
+                    candidates: MotionGeometryFrameCandidates(
+                        layoutInWindow: layoutInWindow,
+                        presentationInWindow: presentationInWindow
+                    )
+                )
+
+                let resolvedFrame: CGRect
+                switch space {
+                case .swiftUI:
+                    resolvedFrame = selectedInWindow
+                case .window:
+                    resolvedFrame = selectedInWindow
+                case .screen:
+                    resolvedFrame = window.convertToScreen(selectedInWindow)
+                }
+
+                onFrameChange(resolvedFrame)
+            }
+
+            private static func presentationFrameInWindow(for view: NSView) -> CGRect? {
+                guard
+                    let presentationLayer = view.layer?.presentation(),
+                    let superview = view.superview
+                else {
+                    return nil
+                }
+
+                let originInSuperview = CGPoint(
+                    x: presentationLayer.frame.minX,
+                    y: presentationLayer.frame.minY
+                )
+                let originInWindow = superview.convert(originInSuperview, to: nil)
+                return CGRect(origin: originInWindow, size: presentationLayer.frame.size)
+            }
         }
     }
-}
 #endif
 
 private struct MotionScrollGeometryProbeView: View {
