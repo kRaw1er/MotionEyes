@@ -216,15 +216,17 @@ private struct MotionTraceRuntimeOverlay: View {
                 }
             }
 
-            ForEach(scrollGeometryProbes) { probe in
-                MotionScrollGeometryProbeView(properties: probe.properties) { components in
-                    coordinator.recordGeometry(
-                        metricID: probe.metricID,
-                        metricName: probe.metricName,
-                        components: components,
-                        precision: probe.precision,
-                        epsilon: probe.epsilon
-                    )
+            if #available(iOS 18, macOS 15, tvOS 18, watchOS 11, visionOS 2, *) {
+                ForEach(scrollGeometryProbes) { probe in
+                    MotionScrollGeometryProbeView(properties: probe.properties) { components in
+                        coordinator.recordGeometry(
+                            metricID: probe.metricID,
+                            metricName: probe.metricName,
+                            components: components,
+                            precision: probe.precision,
+                            epsilon: probe.epsilon
+                        )
+                    }
                 }
             }
         }
@@ -642,6 +644,7 @@ private struct MotionSwiftUILayoutGeometryProbeView: View {
     }
 #endif
 
+@available(iOS 18, macOS 15, tvOS 18, watchOS 11, visionOS 2, *)
 private struct MotionScrollGeometryProbeView: View {
     let properties: Set<MotionScrollGeometryProperty>
     let onComponentsChange: ([String: Double]) -> Void

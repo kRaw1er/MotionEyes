@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "MotionEyes",
     platforms: [
-        .iOS(.v18),
+        .iOS(.v17),
         .macOS(.v15),
         .tvOS(.v18),
         .watchOS(.v11),
